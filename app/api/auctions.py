@@ -11,7 +11,7 @@ from db.database import get_db
 
 router = APIRouter(prefix="/auctions", tags=["auctions"])
 
-@router.get("/auctions/", response_model=List[AuctionRead])
+@router.get("/", response_model=List[AuctionRead])
 def read_auctions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return list_auctions(db, skip, limit)
 

@@ -16,6 +16,8 @@ class Vehicle(Base):
     location_state   = Column(String(64), nullable=True)
     location_country = Column(String(64), nullable=True)
 
+    external_id      = Column(Integer, unique=True, index=True, nullable=True)  # ✅ Este debe estar
+
     auctions = relationship(
         "Auction",
         back_populates="vehicle",

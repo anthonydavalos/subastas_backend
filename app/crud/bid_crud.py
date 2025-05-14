@@ -17,7 +17,7 @@ def list_bids_for_auction(db: Session, auction_id: int, skip: int = 0, limit: in
     )
 
 def create_bid(db: Session, bid_in: BidCreate) -> Bid:
-    db_bid = Bid(**bid_in.dict())
+    db_bid = Bid(**bid_in.model_dump())
     db.add(db_bid)
     db.commit()
     db.refresh(db_bid)

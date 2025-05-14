@@ -1,9 +1,10 @@
 from sqlalchemy.orm import Session
+from typing import Optional, List
 from app.models.vehicle import Vehicle
 from app.schemas.vehicle_schema import VehicleCreate, VehicleUpdate
 
 
-def create_vehicle(db: Session, veh: VehicleCreate):
+def create_vehicle(db: Session, veh: VehicleCreate) -> Vehicle:
     db_veh = Vehicle(**veh.model_dump())   # Pydantic V2 usa model_dump()
     db.add(db_veh)
     db.commit()
@@ -11,7 +12,7 @@ def create_vehicle(db: Session, veh: VehicleCreate):
     return db_veh
 
 
-def get_vehicle(db: Session, vehicle_id: int):
+def get_vehicle(db: Session, vehicle_id: int) -> Optional[Vehicle]:
     return db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
 
 
@@ -22,7 +23,7 @@ def get_vehicle_by_external_id(db: Session, external_id: int):
     return db.query(Vehicle).filter(Vehicle.external_id == external_id).first()
 
 
-def list_vehicles(db: Session, skip: int = 0, limit: int = 100):
+def list_vehicles(db: Session, skip: int = 0, limit: int = 100) -> List[Vehicle]:
     return db.query(Vehicle).offset(skip).limit(limit).all()
 
 

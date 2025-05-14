@@ -6,10 +6,6 @@ from datetime import datetime
 class BidBase(BaseModel):
     auction_id: int
     user_id: int
-    amount: float
-
-    class Config:
-        from_attributes = True
 
 class BidCreate(BidBase):
     """Datos para crear una puja."""

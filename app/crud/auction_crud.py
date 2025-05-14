@@ -10,7 +10,7 @@ def list_auctions(db: Session, skip: int = 0, limit: int = 100) -> List[Auction]
     return db.query(Auction).offset(skip).limit(limit).all()
 
 def create_auction(db: Session, auction_in: AuctionCreate) -> Auction:
-    db_auction = Auction(**auction_in.dict())
+    db_auction = Auction(**auction_in.model_dump())
     db.add(db_auction)
     db.commit()
     db.refresh(db_auction)
@@ -33,3 +33,6 @@ def delete_auction(db: Session, auction_id: int) -> bool:
     db.delete(db_auction)
     db.commit()
     return True
+
+def get_auction_by_external_id(db: Session, external_id: int) -> Optional[Auction]:
+    return db.query(Auction).filter(Auction.external_id == external_id).first()

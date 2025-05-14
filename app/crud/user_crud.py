@@ -33,7 +33,7 @@ def update_user(db: Session, user_id: int, user_in: UserCreate):
         return None
 
     # Actualizar solo los campos enviados
-    for field, value in user_in.dict(exclude_unset=True).items():
+    for field, value in user_in.model_dump(exclude_unset=True).items():
         if field == "password":
             setattr(db_user, "password_hash", pwd_context.hash(value))
         else:

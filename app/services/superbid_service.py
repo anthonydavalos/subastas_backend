@@ -1,121 +1,184 @@
 # app/services/superbid_service.py
 
-import io
-import re
 import logging
-import tempfile
-from typing import List, Optional
-
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from bs4 import BeautifulSoup
-from pdf2image import convert_from_bytes
-import pytesseract
-from pydantic import BaseModel
+from typing import List
 
-# Modelos locales usados para parsear la respuesta de la API de Superbid
-class _OfferDetail(BaseModel):
-    currentMinBid: Optional[float]
-    reservedPrice: Optional[float]
+logger = logging.getLogger(__name__)
 
-class _ProductAttachment(BaseModel):
-    link: str
+# Configuración de sesión con retries (igual que antes)
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[429,502,503,504])
+session.mount("https://", HTTPAdapter(max_retries=retries))
+session.headers.update({
+    "Accept": "application/json",
+    "User-Agent": "subastas-backend/1.0",
+})
+session.timeout = 10
 
-class _Product(BaseModel):
-    thumbnailUrl: Optional[str]
-    attachments: List[_ProductAttachment] = []
+# Punto de entrada sin paginación basada en 'start'
+BASE_URL = (
+    "https://api.sbwebservices.net/offer-query/offers/"
+    "?filter=product.subCategory.category.description:autos;"
+    "product.location.city:lima;"
+    "product.productType.description:autos-y-motos"
+    "&locale=es_PE&orderBy=endDate:asc"
+    "&portalId=21&requestOrigin=marketplace"
+    "&searchType=opened&timeZoneId=America%2FLima"
+)
 
-class _Auction(BaseModel):
-    desc: Optional[str]
+def fetch_all_offers_raw() -> List[dict]:
+    offers = []
+    page = 1
+    page_size = 100
 
-class SuperbidRawOffer(BaseModel):
-    id: int
-    endDateTime: str
-    price: float
-    store: dict
-    offerDetail: _OfferDetail
-    auction: _Auction
-    offerDescription: dict
-    product: _Product
+    while True:
+        url = f"{BASE_URL}&pageNumber={page}&pageSize={page_size}"
+        resp = session.get(url)
+        if resp.status_code != 200:
+            logger.error("Error al descargar página %d: %d %s", 
+                         page, resp.status_code, resp.text[:200])
+            break
 
-# Configuración de reintentos para la sesión HTTP
-def _get_http_session() -> requests.Session:
-    session = requests.Session()
-    retries = Retry(
-        total=5,
-        backoff_factor=0.5,
-        status_forcelist=[500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-    session.mount("https://", HTTPAdapter(max_retries=retries))
-    return session
+        try:
+            data = resp.json()
+        except ValueError:
+            logger.error("Respuesta no JSON en página %d: %s", page, resp.text[:200])
+            break
 
-# Descarga todas las ofertas de Superbid usando su API pública
-def fetch_all_offers_raw() -> List[SuperbidRawOffer]:
-    url = "https://www.superbid.com.br/api/v1/public/auctions/offers"
-    params = {
-        "category": "all",
-        "page": 1,
-        "pageSize": 2000,
-        "type": "active"
-    }
-    session = _get_http_session()
-    response = session.get(url, params=params)
-    response.raise_for_status()
-    data = response.json()
-    offers = [SuperbidRawOffer(**item) for item in data["items"]]
+        batch = data.get("offers", [])
+        if batch:
+            logger.debug("Primera oferta: %s", batch[0])  # Agrega esto
+        if not batch:
+            # no hay más ofertas
+            break
+
+        offers.extend(batch)
+        total = data.get("total", 0)
+        logger.info("Página %d descargada: %d ofertas (total estimado %d)", 
+                    page, len(batch), total)
+
+        # si ya bajamos todas
+        if len(offers) >= total:
+            break
+
+        page += 1
+
+    logger.info("Total ofertas descargadas: %d", len(offers))
     return offers
 
-# Extrae el número de lote desde la descripción
-def parse_lot_number(text: str) -> Optional[int]:
-    match = re.search(r"\bLote\s+(\d+)", text, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    return None
+def import_superbid_auctions():
+    """
+    Descarga, parsea e inserta en la BD todas las ofertas de Superbid.
+    Evita duplicados y lleva conteo de registros creados.
+    """
+    from db.database import SessionLocal
+    from app.crud.auction_crud import create_auction, get_auction_by_external_id
+    from app.crud.vehicle_crud import create_vehicle, get_vehicle_by_external_id
+    from app.schemas.auction_schema import AuctionCreate
+    from app.schemas.vehicle_schema import VehicleCreate
+    import json
 
-# Intenta extraer el título desde el PDF usando OCR
-def extract_title_from_pdf_url(url: str) -> Optional[str]:
+    db = SessionLocal()
+    raws = fetch_all_offers_raw()
+
+    created_vehicles = 0
+    created_auctions = 0
+
+    for raw in raws:  #[:1]:  # limitar a una sola oferta para inspección
+        # print(json.dumps(raw, indent=2, ensure_ascii=False))  # imprime bonito
+        # break
+        auction_schema, vehicle_schema = parse_offer(raw)
+
+        # VEHICLE
+        vehicle = get_vehicle_by_external_id(db, vehicle_schema.external_id)
+        if not vehicle:
+            vehicle = create_vehicle(db, vehicle_schema)
+            created_vehicles += 1
+
+        # Asignamos ID antes de crear la subasta
+        auction_schema.vehicle_id = vehicle.id
+
+        existing_auction = get_auction_by_external_id(db, auction_schema.external_id)
+        if not existing_auction:
+            create_auction(db, auction_schema)
+            created_auctions += 1
+
+    db.close()
+    print(f"✅ Importación completada: {created_vehicles} vehículos nuevos, {created_auctions} subastas nuevas.")
+
+# app/services/superbid_service.py
+
+from app.schemas.auction_schema import AuctionCreate
+from app.schemas.vehicle_schema import VehicleCreate
+from typing import Tuple
+
+from bs4 import BeautifulSoup
+
+def parse_offer(raw: dict) -> tuple[dict, dict]:
+    from datetime import datetime
+
+    # Parsear fechas
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        images = convert_from_bytes(response.content)
-        text = pytesseract.image_to_string(images[0])
-        return text.strip().split("\n")[0]
-    except Exception as e:
-        logging.warning(f"Error extracting title from PDF {url}: {e}")
+        start_time = datetime.fromisoformat(raw["auction"]["beginDate"])
+        end_time = datetime.fromisoformat(raw["endDate"])
+    except Exception:
+        raise ValueError("Faltan fechas obligatorias")
+
+    # 1. Extraer texto HTML del campo de descripción
+    description_html = raw.get("offerDescription", {}).get("offerDescription", "")
+    soup = BeautifulSoup(description_html, "html.parser")
+    description_text = soup.get_text(separator="\n")
+
+    def extract_line(label: str) -> str | None:
+        for line in description_text.splitlines():
+            if label in line.upper():
+                return line.split(":")[-1].strip()
         return None
 
-# Parsea una oferta bruta de Superbid en un diccionario de datos internos
-def parse_offer(raw: SuperbidRawOffer) -> dict:
-    description = raw.auction.desc or ""
-    lot_number = parse_lot_number(description)
+    brand = extract_line("MARCA")
+    model = extract_line("MODELO")
+    year = extract_line("AÑO")
+    license_plate = extract_line("PLACA")
+    location = extract_line("UBICACIÓN")
 
-    title = None
-    if raw.product.attachments:
-        pdf_url = raw.product.attachments[0].link
-        title = extract_title_from_pdf_url(pdf_url)
+    # Separar ciudad y distrito si es posible
+    location_city, location_state = (location.split("-") + [None])[:2] if location else (None, None)
 
-    return {
-        "source": "superbid",
-        "external_id": raw.id,
-        "lot_number": lot_number,
-        "title": title,
-        "description": description,
-        "start_time": None,  # No disponible en el JSON de Superbid
-        "end_time": raw.endDateTime,
-        "base_price": raw.price,
-        "current_price": raw.offerDetail.currentMinBid,
-        "reserved_price": raw.offerDetail.reservedPrice,
-        "bid_increment": None,
-        "currency": "BRL",
-        "vehicle_id": None,
-        "seller_name": raw.store.get("name"),
-        "seller_company": raw.store.get("tradingName"),
+    vehicle_data = {
+        "brand": brand,
+        "model": model,
+        "year": int(year) if year and year.isdigit() else None,
+        "category": "Autos",
+        "subcategory": "Siniestrado",
+        "mileage": None,
+        "location_city": location_city.strip() if location_city else None,
+        "location_state": location_state.strip() if location_state else None,
+        "location_country": "Perú",
+        "external_id": raw["id"],
     }
 
-# Función de alto nivel para importar todas las subastas de Superbid
-def import_superbid_auctions() -> List[dict]:
-    raw_offers = fetch_all_offers_raw()
-    parsed_offers = [parse_offer(raw) for raw in raw_offers]
-    return parsed_offers
+    auction_data = {
+        "source": "superbid",
+        "external_id": raw["id"],
+        "lot_number": raw.get("lotNumber"),
+        "title": raw.get("product", {}).get("shortDesc"),
+        "description": description_html,
+        "start_time": start_time,
+        "end_time": end_time,
+        "base_price": raw.get("offerDetail", {}).get("initialBidValue"),
+        "current_price": raw.get("offerDetail", {}).get("currentMaxBid"),
+        "currency": "USD",
+        "visits": raw.get("visits"),
+        "total_bidders": raw.get("totalBidders"),
+        "total_bids": raw.get("totalBids"),
+        "reserved_price": raw.get("offerDetail", {}).get("reservedPrice"),
+        "bid_increment": raw.get("currentBidIncrement", {}).get("currentBidIncrement"),
+        "seller_name": raw.get("store", {}).get("name"),
+        "seller_company": None,  # ajustar si encuentras este dato en otro lugar
+        "vehicle_id": None  # se asignará luego
+    }
+
+    return auction_data, vehicle_data

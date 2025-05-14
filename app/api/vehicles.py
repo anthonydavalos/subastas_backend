@@ -37,4 +37,4 @@ def edit_vehicle(vehicle_id: int, vehicle_in: VehicleUpdate, db: Session = Depen
 def remove_vehicle(vehicle_id: int, db: Session = Depends(get_db)):
     if not delete_vehicle(db, vehicle_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return Response()

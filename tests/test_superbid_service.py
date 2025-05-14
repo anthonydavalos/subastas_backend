@@ -44,10 +44,10 @@ MOCK_PARSED_OFFERS = [
 @pytest.fixture(autouse=True)
 def mock_fetch_and_parse(monkeypatch):
     # Sustituimos fetch_all_offers_raw para que devuelva nuestros RAWs
-    monkeypatch.setattr(
-        "app.services.superbid_service.fetch_all_offers_raw",
-        lambda: MOCK_RAW_OFFERS
-    )
+    # monkeypatch.setattr(
+    #     "app.services.superbid_service.fetch_all_offers_raw",
+    #     lambda: MOCK_RAW_OFFERS
+    # )
     # Sustituimos parse_offer para que devuelva nuestro parsed
     monkeypatch.setattr(
         "app.services.superbid_service.parse_offer",

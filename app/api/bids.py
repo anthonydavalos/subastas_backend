@@ -59,4 +59,3 @@ def remove_bid(
     success = delete_bid(db, bid_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bid not found")
-    return
