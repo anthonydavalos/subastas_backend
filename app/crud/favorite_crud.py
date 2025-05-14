@@ -29,7 +29,7 @@ def create_favorite(db: Session, fav_in: FavoriteCreate) -> Favorite:
     if existing:
         return existing
 
-    db_fav = Favorite(**fav_in.dict())
+    db_fav = Favorite(**fav_in.model_dump())
     db.add(db_fav)
     db.commit()
     db.refresh(db_fav)

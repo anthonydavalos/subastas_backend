@@ -3,6 +3,8 @@
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, JSON, ForeignKey
 )
+from app.models.bid import Bid
+from app.models.favorite import Favorite
 from sqlalchemy.orm import relationship
 from db.database import Base
 import datetime
@@ -57,5 +59,5 @@ class Auction(Base):
                               "Vehicle",
                               back_populates="auctions"
                           )
-    bids                  = relationship("Bid", back_populates="auction")
-    favorites             = relationship("Favorite", back_populates="auction")
+    bids                  = relationship(Bid, back_populates="auction")
+    favorites             = relationship(Favorite, back_populates="auction")

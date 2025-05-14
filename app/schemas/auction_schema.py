@@ -1,6 +1,6 @@
 # app/schemas/auction_schema.py
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 
 class AuctionBase(BaseModel):
@@ -34,7 +34,7 @@ class AuctionCreate(AuctionBase):
     end_time: datetime
     base_price: float
     current_price: float
-    vehicle_id: int
+    vehicle_id: Optional[int] = None
 
 class AuctionRead(AuctionBase):
     """Respuesta al obtener subastas."""

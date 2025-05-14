@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship
 from db.database import Base
+from app.models.user import User
 
 class Bid(Base):
     __tablename__ = "bids"
@@ -13,4 +14,4 @@ class Bid(Base):
 
     # Relaciones
     auction      = relationship("Auction", back_populates="bids")
-    user         = relationship("User", back_populates="bids")
+    user         = relationship(User, back_populates="bids")

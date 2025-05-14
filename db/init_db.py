@@ -8,6 +8,7 @@ USO:
 from db.database import Base, engine
 
 # Importar **todos** los módulos con tus modelos ORM
+import app.models  # Esto es clave para registrar todos los modelos
 import app.models.user
 import app.models.vehicle
 import app.models.auction
