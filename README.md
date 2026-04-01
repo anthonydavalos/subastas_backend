@@ -61,3 +61,15 @@ All analysis is performed on publicly accessible data without bypassing authenti
 ## 👨‍💻 Author
 
 Cybersecurity-focused developer with 30+ years of hands-on experience in systems analysis, reverse engineering, and automation.
+
+---
+
+## 🛡️ Cybersecurity Focus
+
+These projects are part of a broader effort to transition into:
+
+- SOC Analyst roles  
+- Threat Hunting  
+- Security Research  
+
+Focused on real-world system analysis rather than theoretical security.
