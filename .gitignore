@@ -1,4 +1,11 @@
 # Python
+# Local configuration; only the fictional example may be tracked.
+.env
+.env.*
+!.env.example
+*.log
+.coverage
+
 __pycache__/
 *.pyc
 *.pyo

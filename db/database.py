@@ -1,17 +1,12 @@
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-import os
-from dotenv import load_dotenv
+from db.config import get_database_url
 
 # Cargar variables de entorno desde un archivo .env
-load_dotenv()
 
 # Configurar conexión a la base de datos PostgreSQL
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise Exception("DATABASE_URL no configurado en tu .env")
+DATABASE_URL = get_database_url()
 
 # Crear motor de conexión
 engine = create_engine(
